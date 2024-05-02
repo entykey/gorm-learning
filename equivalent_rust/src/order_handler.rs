@@ -1,92 +1,68 @@
 use ntex::web::{self, HttpResponse};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
-use crate::AppState;
+use crate::{models::models::{Order, Customer, OrderViewModel, OrderData, OrderItemViewModel, Product}, AppState};
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/orders")
-            // .route("simple", web::get().to(load_orders))
+            .route("simple", web::get().to(load_orders))
             .route("joined-props", web::get().to(load_orders_joined_props_3_queries))
-            // .route("joined-props-optimize", web::get().to(load_orders_joined_props_1_query)),
+            .route("joined_props_wrong_format", web::get().to(load_orders_joined_props_wrong_format))
+            .route("joined-props-optimize", web::get().to(retrieve_orders_optimized)),
     );
 }
 
-// async fn load_roles(pool: web::Data<MySqlPool>) -> Result<HttpResponse> {
-//     let roles_result = sqlx::query("SELECT * FROM AspNetRoles")
-//         .fetch_all(pool.get_ref())
-//         .await;
 
-//     match roles_result {
-//         Ok(roles_list) => {
-//             Ok(HttpResponse::Ok().json(roles_list))
-//         }
-
-//         // Handle RowNotFound error
-//         Err(sqlx::Error::RowNotFound) => {
-//             Ok(HttpResponse::NotFound().body("Roles not found"))
-//         }
-
-//         // Catching other errors
-//         Err(e) => {
-//             eprintln!("Error fetching roles: {:?}", e);
-//             Ok(HttpResponse::InternalServerError().body("Internal Server Error"))
-//         }
-//     }
-// }
-
-/// Load Roles with LRU cache
+/// Load Records with LRU cache
 ///
-/// 2nd line of desc: Retrieve all AspNetRoles
+/// 2nd line of desc: Retrieve all Order
 ///
 /// One could call the api endpoint with following curl.
 /// ```text
-/// curl http://192.168.1.11:4000/api/roles
+/// curl http://192.168.1.11:4000/api/orders/simple
 /// ```
 /// autocannon test:
 /// ```
-/// autocannon http://192.168.1.11:4000/api/roles -d 10 -c 300 -w 4
+/// autocannon http://192.168.1.11:4000/api/orders/simple -d 10 -c 300 -w 4
 /// ```
 // #[utoipa::path(
 //     get,                       // important
-//     path = "/api/roles",        // important
+//     path = "/api/orders/simple",        // important
 //     responses(
-//       (status = 200, description = "success response", body = [Vec<AspNetRole>]),
+//       (status = 200, description = "success response", body = [Vec<Order>]),
 //     ),
 // )]
-/*
+
 async fn load_orders(app_state: web::types::State<AppState>) -> HttpResponse {
     // If roles are not in the cache, fetch them from the database
     let orders_result: Result<Vec<Order>, sqlx::Error> =
-        sqlx::query_as!(Order, "SELECT order_id, customer_id FROM orders")
+        sqlx::query_as!(Order, "SELECT order_id, customer_id, CAST(order_date AS CHAR) AS order_date FROM orders")
             .fetch_all(&app_state.pool)
             .await;
 
     // Handle the result of the database query
     let response = match orders_result {
+
         Ok(orders_list) => {
-            // Update the cache with the fetched roles
-            // let mut cache = app_state.role_cache.lock().unwrap();
-            // cache.put(cache_key.to_string(), orders_list.clone());
-
-            // println!("Roles put to cache");
-
             HttpResponse::Ok().json(&orders_list)
         }
-        Err(sqlx::Error::RowNotFound) => HttpResponse::NotFound().body("Roles not found"),
+
+        // Handle RowNotFound error
+        Err(sqlx::Error::RowNotFound) => HttpResponse::NotFound().body("Orders not found"),
+
+        // Catching other errors
         Err(e) => {
-            eprintln!("Error fetching roles: {:?}", e);
+            eprintln!("Error fetching orders: {:?}", e);
             HttpResponse::InternalServerError().body("Internal Server Error")
         }
     };
 
     response
 }
-*/
 
 // worked, but unwanted json format
-/*
-async fn load_orders_joined_props(app_state: web::types::State<AppState>) -> HttpResponse {
+async fn load_orders_joined_props_wrong_format(app_state: web::types::State<AppState>) -> HttpResponse {
     // Define a new struct to represent the joined data from the query
     #[derive(Debug, Serialize)]
     struct JoinedOrder {
@@ -142,7 +118,7 @@ async fn load_orders_joined_props(app_state: web::types::State<AppState>) -> Htt
         }
     }
 }
-*/
+
 
 // attempt to fix from above working code:
 async fn load_orders_joined_props_3_queries(app_state: web::types::State<AppState>) -> HttpResponse {
@@ -298,6 +274,121 @@ async fn load_orders_joined_props_3_queries(app_state: web::types::State<AppStat
     }
 }
 
+async fn retrieve_orders_optimized(app_state: web::types::State<AppState>) -> HttpResponse {
+    // removed o.order_date, due to NaiveDateTime failure
+    let result = sqlx::query!(
+        r#"
+        SELECT
+            o.order_id,
+            CAST(o.order_date AS CHAR) AS "order_date", 
+            o.customer_id,
+            c.name AS customer_name,
+            c.email AS customer_email,
+            oi.order_item_id,
+            oi.product_id,
+            oi.quantity,
+            p.name AS product_name,
+            p.price AS product_price
+        FROM
+            orders o
+            LEFT JOIN customers c ON o.customer_id = c.customer_id
+            LEFT JOIN order_items oi ON o.order_id = oi.order_id
+            LEFT JOIN products p ON oi.product_id = p.product_id
+        ORDER BY
+            o.order_id, oi.order_item_id
+        "#,
+    )
+    .fetch_all(&app_state.pool)
+    .await;
+
+    match result {
+        Ok(rows) => {
+            let mut orders: Vec<OrderViewModel> = Vec::new();
+            let mut current_order_id: Option<i64> = None;
+            let mut current_order: Option<OrderViewModel> = None;
+
+            for row in rows {
+                let data = OrderData {
+                    order_id: row.order_id,
+                    // order_date: row.order_date, // err: mismatched types: expected struct `std::string::String` found enum `std::option::Option<std::string::String>`r
+                    order_date: row.order_date.unwrap(), // without sql CAST => error: "no method named `unwrap` found for struct `PrimitiveDateTime` in the current scope. method not found in `PrimitiveDateTime`r"
+                    // order_date: row.order_date.format("%Y-%m-%dT%H:%M:%S").to_string(),  // without sql CAST => err
+
+                    // order_date: match row.order_date.format("%Y-%m-%dT%H:%M:%S") {
+                    //     Ok(formatted_date) => formatted_date.to_string(),
+                    //     Err(_) => String::new(), // Provide a default value in case of an error
+                    // },
+
+                    // order_date: match row.order_date {
+                    //     Some(dt) => format!("%Y-%m-%dT%H:%M:%S").to_string(),
+                    //     None => "".to_string(),
+                    // },
+                    
+                    customer_id: row.customer_id,
+                    customer_name: row.customer_name.unwrap(),
+                    customer_email: row.customer_email.unwrap(),
+                    order_item_id: row.order_item_id.unwrap(),
+                    product_id: row.product_id.unwrap(),
+                    quantity: row.quantity.unwrap(),
+                    product_name: row.product_name.unwrap(),
+                    product_price: row.product_price.unwrap(),
+                };
+
+                if current_order_id != Some(data.order_id) {
+                    if let Some(order) = current_order.take() {
+                        orders.push(order);
+                    }
+                    current_order_id = Some(data.order_id);
+                    let customer = Customer {
+                        customer_id: data.customer_id,
+                        name: data.customer_name,
+                        email: data.customer_email,
+                    };
+                    let mut order_items: Vec<OrderItemViewModel> = Vec::new();
+                    let total: f64 = 0.0; // Initialize total for the order
+                    let order = OrderViewModel {
+                        order_id: data.order_id,
+                        order_date: data.order_date,
+                        customer_id: data.customer_id,
+                        customer,
+                        order_items,
+                        total,
+                    };
+                    current_order = Some(order);
+                }
+
+                if let Some(ref mut order) = current_order {
+                    let product = Product {
+                        product_id: data.product_id,
+                        name: data.product_name,
+                        price: data.product_price,
+                    };
+                    let order_item = OrderItemViewModel {
+                        order_item_id: data.order_item_id,
+                        product_id: data.product_id,
+                        quantity: data.quantity,
+                        product,
+                    };
+                    order.order_items.push(order_item);
+
+                    // Update total for the order
+                    order.total += data.quantity as f64 * data.product_price;
+                }
+            }
+
+            if let Some(order) = current_order.take() {
+                orders.push(order);
+            }
+
+            HttpResponse::Ok().json(&orders)
+        }
+        Err(e) => {
+            eprintln!("Error retrieving orders: {:?}", e);
+            HttpResponse::InternalServerError().finish()
+        }
+    }
+}
+
 /*
 // failed
 async fn load_orders_joined_props_v1(app_state: web::types::State<AppState>) -> HttpResponse {
@@ -332,428 +423,6 @@ async fn load_orders_joined_props_v1(app_state: web::types::State<AppState>) -> 
         Err(sqlx::Error::RowNotFound) => HttpResponse::NotFound().body("Orders not found"),
         Err(e) => {
             eprintln!("Error fetching orders: {:?}", e);
-            HttpResponse::InternalServerError().body("Internal Server Error")
-        }
-    }
-}
-*/
-
-/*
-
-// async fn load_roles(
-//     app_state: web::types::State<AppState>, // ntex
-// ) -> HttpResponse {
-//     let roles_result: Result<Vec<AspNetRole>, sqlx::Error> = sqlx::query_as::<_, AspNetRole>("SELECT * FROM AspNetRoles")
-//         .fetch_all(&app_state.pool)
-//         .await;
-
-//     // println!("{:?}", roles_result); // Ok([AspNetRole { Id: "094cd9d9-7388-4804-89d9-f748148bce17", Name: "admin", NormalizedName: "ADMIN" }, AspNetRole { Id: "1489bac2-c238-49d0-92c0-6f0049301157", Name: "staff", NormalizedName: "STAFF" }])
-
-//     match roles_result {
-//         Ok(roles_list) => {
-//             HttpResponse::Ok().json(&roles_list)
-//         }
-//         // Handle RowNotFound error
-//         Err(sqlx::Error::RowNotFound) => {
-//             HttpResponse::NotFound().body("Roles not found")
-//         }
-//         // Catching other errors
-//         Err(e) => {
-//             eprintln!("Error fetching roles: {:?}", e);
-//             HttpResponse::InternalServerError().body("Internal Server Error")
-//         }
-//     }
-// }
-
-/// Load Roles By UserName
-///
-/// 2nd line of desc: Retrieve all AspNetRoles of an AspNetUser
-///
-/// One could call the api endpoint with following curl.
-/// ```text
-/// curl localhost:4000/api/roles/{username}
-/// ```
-#[utoipa::path(
-    get,                       // important
-    path = "/api/roles/{username}",        // important
-    params(
-        ("username", description = "Type in UserName", example = "testuser")
-    ),
-    responses(
-      (status = 200, description = "success response",body = UserInRoleInfo, content_type = "application/json", example = json!(
-        [
-            {
-            "RoleId": "xxx",
-            "RoleName": "xxx",
-            "IsInRole": false
-            },
-            {
-            "RoleId": "xxx",
-            "RoleName": "xxx",
-            "IsInRole": false
-            },
-      ])),
-    ),
-)]
-async fn load_roles_by_username(
-    app_state: web::types::State<AppState>, // ntex
-    path: web::types::Path<String>,
-) -> HttpResponse {
-
-    let username: &String = &*path;
-    let result: Result<Vec<UserInRoleInfo>, sqlx::Error> = sqlx::query_as::<_, UserInRoleInfo>(
-        r#"
-        SELECT
-            r.Id as RoleId,
-            r.Name as RoleName,
-            COALESCE(ur.UserId, 0) as IsInRole
-        FROM AspNetRoles r
-        LEFT JOIN (
-            SELECT RoleId, 1 as UserId
-            FROM AspNetUserRoles
-            WHERE UserId = (SELECT Id FROM AspNetUsers WHERE UserName = ?)
-        ) ur ON r.Id = ur.RoleId
-        "#,
-    )
-    .bind(username)
-    .fetch_all(&app_state.pool)
-    .await;
-
-    match result {
-        Ok(user_roles) => HttpResponse::Ok().json(&user_roles),
-        // Err(_) => web::HttpResponse::InternalServerError().finish()
-
-        // Catching other errors
-        Err(e) => {
-            eprintln!("Error fetching roles of designated user: {:?}", e);
-            HttpResponse::InternalServerError().body("Internal Server Error")
-        }
-    }
-}
-
-// async fn update_user_roles(
-//     app_state: web::types::State<AppState>,
-//     data: web::types::Json<Vec<UserInRoleInfo>>,
-//     path: web::types::Path<String>,
-// ) -> HttpResponse {
-//     use sqlx::Acquire;
-
-//     let username: &String = &*path;
-//     let mut conn = match app_state.pool.acquire().await {
-//         Ok(conn) => conn,
-//         Err(e) => {
-//             eprintln!("Failed to acquire database connection: {:?}", e);
-//             return HttpResponse::InternalServerError().body("Internal Server Error, Failed to acquire database connection");
-//         }
-//     };
-
-//     let mut transaction = match conn.begin().await {
-//         Ok(transaction) => transaction,
-//         Err(e) => {
-//             eprintln!("Failed to begin database transaction: {:?}", e);
-//             return HttpResponse::InternalServerError().body("Internal Server Error, Failed to begin database transaction");
-//         }
-//     };
-
-//     // Clear all existing roles of targeted user
-//     if let Err(e) = sqlx::query("DELETE FROM AspNetUserRoles WHERE UserId = (SELECT Id FROM AspNetUsers WHERE UserName = ?)")
-//         .bind(username)
-//         .execute(&mut *transaction)
-//         .await {
-//         eprintln!("Failed to execute DELETE query: {:?}", e);
-//         return HttpResponse::InternalServerError().body("Internal Server Error, Failed to execute DELETE query");
-//     }
-
-//     // Add selected roles for the user (all roles in the request body will be assigned to user)
-//     for user_role in &data.into_inner() {
-//         if let Err(e) = sqlx::query(
-//             "INSERT INTO AspNetUserRoles (UserId, RoleId) VALUES ((SELECT Id FROM AspNetUsers WHERE UserName = ?), ?)",
-//         )
-//         .bind(username.clone())
-//         .bind(&user_role.RoleId)
-//         .execute(&mut transaction)
-//         .await {
-//             eprintln!("Failed to execute INSERT query: {:?}", e);
-//             return HttpResponse::InternalServerError().body("Internal Server Error, Failed to execute INSERT query");
-//         }
-//     }
-
-//     if let Err(e) = transaction.commit().await {
-//         eprintln!("Failed to commit transaction: {:?}", e);
-//         return HttpResponse::InternalServerError().body("Internal Server Error, Failed to commit transaction");
-//     }
-
-//     // Respond with JSON body
-//     HttpResponse::Ok().json(&serde_json::json!({
-//         "message": "Updated the user roles.",
-//     }))
-// }
-// // Example request body:
-// // 1. Add this 1 role to the targeted user (username in path param)
-// // [
-// //     {
-// //         "RoleId": "1489bac2-c238-49d0-92c0-6f0049301157",
-// //         "RoleName": "staff",
-// //         "IsInRole": true
-// //     }
-// // ]
-
-// // 2. Add 2 roles to the targeted user (username in path param) (doesn't care about the IsInRole is true or false)
-// // [
-// //     {
-// //         "RoleId": "094cd9d9-7388-4804-89d9-f748148bce17",
-// //         "RoleName": "admin",
-// //         "IsInRole": false
-// //     },
-// //     {
-// //         "RoleId": "1489bac2-c238-49d0-92c0-6f0049301157",
-// //         "RoleName": "staff",
-// //         "IsInRole": true
-// //     }
-// // ]
-
-
-/// Assign User Roles
-///
-/// 2nd line of desc: Update / Assign User Roles
-///
-/// One could call the api endpoint with following curl.
-/// ```text
-/// curl localhost:4000/api/roles/{username}
-/// ```
-#[utoipa::path(
-    put,                                // important
-    request_body = UserInRoleInfo,
-    request_body(content = UserInRoleInfo, description = "Json Vec<UserInRoleInfo> request body", content_type = "application/json", example = json!(
-        [
-            {
-                "RoleId": "094cd9d9-7388-4804-89d9-f748148bce17",
-                "RoleName": "admin",
-                "IsInRole": false
-              },
-              {
-                "RoleId": "1489bac2-c238-49d0-92c0-6f0049301157",
-                "RoleName": "staff",
-                "IsInRole": true
-              }
-      ]
-    )),
-    path = "/api/roles/{username}",     // important
-    params(
-        ("username", description = "Type in UserName", example = "testuser")
-    ),
-    responses(
-      (status = 200, description = "success response"),
-    ),
-)]
-async fn update_user_roles(
-    app_state: web::types::State<AppState>,
-    data: web::types::Json<Vec<UserInRoleInfo>>,
-    path: web::types::Path<String>,
-) -> HttpResponse {
-    use sqlx::Acquire;
-
-    // Clear the cache for the key "users_with_roles"
-    {
-        let mut cache = app_state.user_with_roles_cache.lock().unwrap();
-        cache.pop("users_with_roles");
-    }
-
-    let username: &String = &*path;
-    let mut conn = match app_state.pool.acquire().await {
-        Ok(conn) => conn,
-        Err(e) => {
-            eprintln!("Failed to acquire database connection: {:?}", e);
-            return HttpResponse::InternalServerError().body("Internal Server Error, Failed to acquire database connection");
-        }
-    };
-
-    let mut transaction = match conn.begin().await {
-        Ok(transaction) => transaction,
-        Err(e) => {
-            eprintln!("Failed to begin database transaction: {:?}", e);
-            return HttpResponse::InternalServerError().body("Internal Server Error, Failed to begin database transaction");
-        }
-    };
-
-    // Clear all existing roles of the targeted user
-    let delete_result = sqlx::query("DELETE FROM AspNetUserRoles WHERE UserId = (SELECT Id FROM AspNetUsers WHERE UserName = ?)")
-        .bind(username)
-        .execute(&mut *transaction)
-        .await;
-
-    if let Err(e) = delete_result {
-        eprintln!("Failed to execute DELETE query: {:?}", e);
-        return HttpResponse::InternalServerError().body("Internal Server Error, Failed to execute DELETE query");
-    }
-
-    // // Prepare the SQL query outside the loop
-    // let base_query = sqlx::query(
-    //     "INSERT INTO AspNetUserRoles (UserId, RoleId) VALUES ((SELECT Id FROM AspNetUsers WHERE UserName = ?), ?)",
-    // )
-    // .bind(username.clone());
-
-    // Add or remove roles based on IsInRole field in the request body
-    for user_role in &data.into_inner() {
-        let insert_query = sqlx::query("INSERT INTO AspNetUserRoles (UserId, RoleId) VALUES ((SELECT Id FROM AspNetUsers WHERE UserName = ?), ?)",
-        )
-        .bind(username.clone());
-
-        let insert_result = if user_role.IsInRole {
-            // If IsInRole is true, execute the query
-            insert_query
-                .bind(&user_role.RoleId)
-                .execute(&mut *transaction)
-                .await
-                .map(|_| ()) // Map the Ok(_) variant to Ok(())
-        } else {
-            // If IsInRole is false, skip the query
-            Ok(())
-        };
-
-        if let Err(e) = insert_result {
-            eprintln!("Failed to execute INSERT query: {:?}", e);
-            return HttpResponse::InternalServerError().body("Internal Server Error, Failed to execute INSERT query");
-        }
-    }
-
-    if let Err(e) = transaction.commit().await {
-        eprintln!("Failed to commit transaction: {:?}", e);
-        return HttpResponse::InternalServerError().body("Internal Server Error, Failed to commit transaction");
-    }
-
-    // Respond with JSON body
-    HttpResponse::Ok().json(&serde_json::json!({
-        "message": "Updated the user roles.",
-    }))
-}
-// Example request body:
-/// 1. Assign all roles to targeted user:
-// [
-//     {
-//         "RoleId": "094cd9d9-7388-4804-89d9-f748148bce17",
-//         "RoleName": "admin",
-//         "IsInRole": true
-//     },
-//     {
-//         "RoleId": "1489bac2-c238-49d0-92c0-6f0049301157",
-//         "RoleName": "staff",
-//         "IsInRole": true
-//     }
-// ]
-
-/// 2. Remove all roles from targeted user:
-// [
-//     {
-//         "RoleId": "094cd9d9-7388-4804-89d9-f748148bce17",
-//         "RoleName": "admin",
-//         "IsInRole": false
-//     },
-//     {
-//         "RoleId": "1489bac2-c238-49d0-92c0-6f0049301157",
-//         "RoleName": "staff",
-//         "IsInRole": false
-//     }
-// ]
-
-
-
-async fn add_role(
-    app_state: web::types::State<AppState>,
-    new_role: web::types::Json<NewAspNetRole>,
-) -> HttpResponse {
-    let name = &new_role.name;
-    if name.is_empty() {
-        return HttpResponse::BadRequest().body("Role name cannot be empty");
-    }
-
-    // Clear the cache for the key "roles"
-    {
-        let mut cache = app_state.role_cache.lock().unwrap();
-        cache.pop("roles");
-    }
-
-    let insert_result: Result<_, _> = sqlx::query!(
-        "INSERT INTO AspNetRoles (Id, Name, NormalizedName) VALUES (?, ?, ?)",
-        uuid::Uuid::new_v4().to_string(),
-        name.clone(),
-        name.to_uppercase()
-    )
-    .execute(&app_state.pool)
-    .await;
-
-    match insert_result {
-        Ok(_) => HttpResponse::Created().body("Role added successfully"),
-        Err(e) => {
-            eprintln!("Error adding role: {:?}", e);
-            HttpResponse::InternalServerError().body("Internal Server Error")
-        }
-    }
-}
-
-
-async fn update_role(
-    app_state: web::types::State<AppState>,
-    path: web::types::Path<String>,
-    new_role: web::types::Json<NewAspNetRole>,
-) -> HttpResponse {
-    let role_id: &String = &*path;
-    let name: &String = &new_role.name;
-
-    // Clear the cache for the key "roles"
-    {
-        let mut cache = app_state.role_cache.lock().unwrap();
-        cache.pop("roles");
-    }
-
-    let update_result: Result<_, sqlx::Error> = sqlx::query!(
-        "UPDATE AspNetRoles SET Name = ?, NormalizedName = ? WHERE Id = ?",
-        name,
-        name.to_uppercase(),
-        role_id
-    )
-    .execute(&app_state.pool)
-    .await;
-
-    match update_result {
-        Ok(_) => {
-            HttpResponse::Ok().body("Role updated successfully")
-        }
-        Err(sqlx::Error::RowNotFound) => {
-            HttpResponse::NotFound().body("Role not found")
-        }
-        Err(e) => {
-            eprintln!("Error updating role: {:?}", e);
-            HttpResponse::InternalServerError().body("Internal Server Error")
-        }
-    }
-}
-
-async fn delete_role(
-    app_state: web::types::State<AppState>,
-    path: web::types::Path<String>,
-) -> HttpResponse {
-    let role_id = &*path;
-
-    // Clear the cache for the key "roles"
-    {
-        let mut cache = app_state.role_cache.lock().unwrap();
-        cache.pop("roles");
-    }
-
-    let delete_result: Result<_, sqlx::Error> = sqlx::query!("DELETE FROM AspNetRoles WHERE Id = ?", role_id)
-        .execute(&app_state.pool)
-        .await;
-
-    match delete_result {
-        Ok(_) => {
-            HttpResponse::Ok().body("Role deleted successfully")
-        }
-        Err(sqlx::Error::RowNotFound) => {
-            HttpResponse::NotFound().body("Role not found")
-        }
-        Err(e) => {
-            eprintln!("Error deleting role: {:?}", e);
             HttpResponse::InternalServerError().body("Internal Server Error")
         }
     }

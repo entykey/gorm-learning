@@ -1,0 +1,146 @@
+{
+  "db_name": "MySQL",
+  "query": "\n        SELECT\n            orders.order_id AS \"order_id!\",\n            -- orders.order_date AS \"order_date!\",\n            CAST(orders.order_date AS CHAR) AS \"order_date!\", -- Convert DATETIME to CHAR\n            orders.customer_id AS \"customer_id!\",\n            customers.customer_id AS \"customer__customer_id!\",\n            customers.name AS \"customer__name!\",\n            customers.email AS \"customer__email!\",\n            order_items.order_item_id AS \"order_items__order_item_id!\",\n            order_items.product_id AS \"order_items__product_id!\",\n            order_items.quantity AS \"order_items__quantity!\",\n            products.product_id AS \"order_items__product__product_id!\",\n            products.name AS \"order_items__product__name!\",\n            products.price AS \"order_items__product__price!\"\n        FROM orders\n        LEFT JOIN customers ON orders.customer_id = customers.customer_id\n        LEFT JOIN order_items ON orders.order_id = order_items.order_id\n        LEFT JOIN products ON order_items.product_id = products.product_id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "order_id!",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | AUTO_INCREMENT",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "order_date!",
+        "type_info": {
+          "type": "VarString",
+          "flags": "",
+          "char_set": 224,
+          "max_size": 92
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "customer_id!",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | MULTIPLE_KEY | NO_DEFAULT_VALUE",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "customer__customer_id!",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "PRIMARY_KEY | AUTO_INCREMENT",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "customer__name!",
+        "type_info": {
+          "type": "Blob",
+          "flags": "BLOB | NO_DEFAULT_VALUE",
+          "char_set": 224,
+          "max_size": 4294967295
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "customer__email!",
+        "type_info": {
+          "type": "Blob",
+          "flags": "BLOB | NO_DEFAULT_VALUE",
+          "char_set": 224,
+          "max_size": 4294967295
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "order_items__order_item_id!",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "PRIMARY_KEY | AUTO_INCREMENT",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "order_items__product_id!",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "MULTIPLE_KEY | NO_DEFAULT_VALUE",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "order_items__quantity!",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NO_DEFAULT_VALUE",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "order_items__product__product_id!",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "PRIMARY_KEY | AUTO_INCREMENT",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "order_items__product__name!",
+        "type_info": {
+          "type": "Blob",
+          "flags": "BLOB | NO_DEFAULT_VALUE",
+          "char_set": 224,
+          "max_size": 4294967295
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "order_items__product__price!",
+        "type_info": {
+          "type": "Double",
+          "flags": "NO_DEFAULT_VALUE",
+          "char_set": 63,
+          "max_size": 22
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "af8480af90009156661732ea59e3a66a180bd860d76f19e06bda2bf713295583"
+}

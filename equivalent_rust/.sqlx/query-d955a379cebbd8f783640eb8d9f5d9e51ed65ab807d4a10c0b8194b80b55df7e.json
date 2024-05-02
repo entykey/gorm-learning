@@ -1,0 +1,124 @@
+{
+  "db_name": "MySQL",
+  "query": "\n        SELECT\n            o.order_id,\n            CAST(o.order_date AS CHAR) AS \"order_date\", \n            o.customer_id,\n            c.name AS customer_name,\n            c.email AS customer_email,\n            oi.order_item_id,\n            oi.product_id,\n            oi.quantity,\n            p.name AS product_name,\n            p.price AS product_price\n        FROM\n            orders o\n            LEFT JOIN customers c ON o.customer_id = c.customer_id\n            LEFT JOIN order_items oi ON o.order_id = oi.order_id\n            LEFT JOIN products p ON oi.product_id = p.product_id\n        ORDER BY\n            o.order_id, oi.order_item_id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "order_id",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | AUTO_INCREMENT",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "order_date",
+        "type_info": {
+          "type": "VarString",
+          "flags": "",
+          "char_set": 224,
+          "max_size": 92
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "customer_id",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | MULTIPLE_KEY | NO_DEFAULT_VALUE",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "customer_name",
+        "type_info": {
+          "type": "Blob",
+          "flags": "BLOB | NO_DEFAULT_VALUE",
+          "char_set": 224,
+          "max_size": 4294967295
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "customer_email",
+        "type_info": {
+          "type": "Blob",
+          "flags": "BLOB | NO_DEFAULT_VALUE",
+          "char_set": 224,
+          "max_size": 4294967295
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "order_item_id",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "PRIMARY_KEY | AUTO_INCREMENT",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "product_id",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "MULTIPLE_KEY | NO_DEFAULT_VALUE",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "quantity",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NO_DEFAULT_VALUE",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "product_name",
+        "type_info": {
+          "type": "Blob",
+          "flags": "BLOB | NO_DEFAULT_VALUE",
+          "char_set": 224,
+          "max_size": 4294967295
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "product_price",
+        "type_info": {
+          "type": "Double",
+          "flags": "NO_DEFAULT_VALUE",
+          "char_set": 63,
+          "max_size": 22
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "d955a379cebbd8f783640eb8d9f5d9e51ed65ab807d4a10c0b8194b80b55df7e"
+}

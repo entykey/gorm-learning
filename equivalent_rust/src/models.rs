@@ -1,10 +1,10 @@
 pub mod models {
     use serde::{Deserialize, Serialize};
     // use utoipa::ToSchema;
-    use chrono::prelude::*;
-    use chrono::{DateTime, Utc};
-    use sqlx::prelude::Type;
-    use sqlx::MySql;
+    // use chrono::prelude::*;
+    // use chrono::{DateTime, Utc};
+    // use sqlx::prelude::Type;
+    // use sqlx::MySql;
 
     // Define models here (all must be public to allow main to access)
 
@@ -22,7 +22,8 @@ pub mod models {
     pub struct Order {
         pub order_id: i64,
         // pub order_date: Option<DateTime<Utc>>,
-        // pub order_date: String,
+        // pub order_date: String  // => err: the trait `From<std::option::Option<std::string::String>>` is not implemented for `std::string::String`
+        pub order_date: Option<String>,
         pub customer_id: i64,
         // pub customer: Customer,
         // pub order_items: Vec<OrderItem>,
@@ -32,9 +33,9 @@ pub mod models {
     // Define the Customer model
     #[derive(Debug, Serialize, Deserialize)]
     pub struct Customer {
-        customer_id: i64,
-        name: String,
-        email: String,
+        pub customer_id: i64,
+        pub name: String,
+        pub email: String,
     }
 
     /*
@@ -77,6 +78,37 @@ pub mod models {
         pub order_items: Vec<OrderItem>,
     }
 
+    #[derive(Debug, Serialize, Deserialize)]
+    pub struct OrderViewModel {
+        pub order_id: i64,
+        pub order_date: String,
+        pub customer_id: i64,
+        pub customer: Customer,
+        pub order_items: Vec<OrderItemViewModel>,
+        pub total: f64,
+    }
+    #[derive(Debug, Serialize, Deserialize)]
+    pub struct OrderItemViewModel {
+        pub order_item_id: i64,
+        pub product_id: i64,
+        pub quantity: i64,
+        pub product: Product,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    pub struct OrderData {
+        pub order_id: i64,
+        pub order_date: String,
+        pub customer_id: i64,
+        pub customer_name: String,
+        pub customer_email: String,
+        pub order_item_id: i64,
+        pub product_id: i64,
+        pub quantity: i64,
+        pub product_name: String,
+        pub product_price: f64,
+    }
+
     #[derive(Debug, Serialize, sqlx::FromRow, sqlx::types::Type, sqlx::Decode)]
     pub struct OrderItem {
         pub order_item_id: i64,
@@ -85,7 +117,7 @@ pub mod models {
         pub product: Product,
     }
 
-    #[derive(Debug, Serialize, sqlx::FromRow, sqlx::Type, sqlx::Decode)]
+    #[derive(Debug, Serialize, Deserialize, sqlx::FromRow, sqlx::Type, sqlx::Decode)]
     pub struct Product {
         pub product_id: i64,
         pub name: String,
@@ -100,7 +132,7 @@ pub mod models {
         fn type_info() -> dyn sqlx::TypeInfo {
             sqlx::TypeInfo::with_name("BLOB")
         }
-    
+
         fn compatible(ty: &dyn sqlx::TypeInfo) -> bool {
             ty.name() == "BLOB"
         }
@@ -116,26 +148,4 @@ pub mod models {
     }
     */
 
-
-    /*
-    impl AuthResponse {
-        pub fn success(user: AspNetUser, access_token: String, refresh_token: String) -> Self {
-            AuthResponse {
-                success: true,
-                user: Some(user),
-                access_token: Some(access_token),
-                refresh_token: Some(refresh_token),
-            }
-        }
-
-        pub fn invalid_credentials() -> Self {
-            AuthResponse {
-                success: false,
-                user: None,
-                access_token: None,
-                refresh_token: None,
-            }
-        }
-    }
-    */
 }

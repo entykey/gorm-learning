@@ -1,8 +1,7 @@
-use ntex::web::{self, App, HttpRequest, HttpResponse};
+use ntex::web::{self, App};
 // use ntex_cors::Cors;
-use serde::{Deserialize, Serialize};
-use sqlx::mysql::{MySqlConnection, MySqlPool, 
-    MySqlPoolOptions, MySqlDatabaseError, MySqlQueryResult, MySqlRow};
+// use serde::{Deserialize, Serialize};
+use sqlx::mysql::{MySqlPool, MySqlPoolOptions};
 
 mod models;
 mod order_handler;
