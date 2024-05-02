@@ -1,5 +1,4 @@
 use ntex::web::{self, App};
-// use ntex_cors::Cors;
 // use serde::{Deserialize, Serialize};
 use sqlx::mysql::{MySqlPool, MySqlPoolOptions};
 
@@ -9,7 +8,6 @@ mod order_handler;
 
 const HOST: &str = "127.0.0.1";
 const PORT: &str = "4000";
-
 
 
 #[derive(Clone)]

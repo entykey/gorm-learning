@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n        SELECT\n            orders.order_id AS \"order_id!\",\n            -- orders.order_date AS \"order_date!\",\n            CAST(orders.order_date AS CHAR) AS \"order_date!\", -- Convert DATETIME to CHAR\n            orders.customer_id AS \"customer_id!\",\n            customers.customer_id AS \"customer__customer_id!\",\n            customers.name AS \"customer__name!\",\n            customers.email AS \"customer__email!\",\n            order_items.order_item_id AS \"order_items__order_item_id!\",\n            order_items.product_id AS \"order_items__product_id!\",\n            order_items.quantity AS \"order_items__quantity!\",\n            products.product_id AS \"order_items__product__product_id!\",\n            products.name AS \"order_items__product__name!\",\n            products.price AS \"order_items__product__price!\"\n        FROM orders\n        LEFT JOIN customers ON orders.customer_id = customers.customer_id\n        LEFT JOIN order_items ON orders.order_id = order_items.order_id\n        LEFT JOIN products ON order_items.product_id = products.product_id\n        ",
+  "query": "\n        SELECT\n            orders.order_id AS \"order_id!\",\n            -- orders.order_date AS \"order_date!\",\n            CAST(orders.order_date AS CHAR) AS \"order_date!\", -- Convert DATETIME to CHAR\n            orders.customer_id AS \"customer_id!\",\n            customers.customer_id AS \"customer__customer_id!\",\n            customers.name AS \"customer_name!\",\n            customers.email AS \"customer_email!\",\n            order_items.order_item_id AS \"order_items__order_item_id!\",\n            order_items.product_id AS \"order_items__product_id!\",\n            order_items.quantity AS \"order_items__quantity!\",\n            products.product_id AS \"order_items__product__product_id!\",\n            products.name AS \"order_items__product__name!\",\n            products.price AS \"order_items__product__price!\"\n        FROM orders\n        LEFT JOIN customers ON orders.customer_id = customers.customer_id\n        LEFT JOIN order_items ON orders.order_id = order_items.order_id\n        LEFT JOIN products ON order_items.product_id = products.product_id\n        ",
   "describe": {
     "columns": [
       {
@@ -45,7 +45,7 @@
       },
       {
         "ordinal": 4,
-        "name": "customer__name!",
+        "name": "customer_name!",
         "type_info": {
           "type": "Blob",
           "flags": "BLOB | NO_DEFAULT_VALUE",
@@ -55,7 +55,7 @@
       },
       {
         "ordinal": 5,
-        "name": "customer__email!",
+        "name": "customer_email!",
         "type_info": {
           "type": "Blob",
           "flags": "BLOB | NO_DEFAULT_VALUE",
@@ -142,5 +142,5 @@
       true
     ]
   },
-  "hash": "af8480af90009156661732ea59e3a66a180bd860d76f19e06bda2bf713295583"
+  "hash": "ff1b8f8cd660bd7da154f9b5da0c9b863b3ab82231c15f3990201875a42358a6"
 }

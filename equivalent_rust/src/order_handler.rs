@@ -1,15 +1,17 @@
 use ntex::web::{self, HttpResponse};
 use serde::Serialize;
+use sqlx::Row;  // for row.get("field_name")
 
 use crate::{models::models::{Order, Customer, OrderViewModel, OrderData, OrderItemViewModel, Product}, AppState};
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/orders")
-            .route("simple", web::get().to(load_orders))
-            .route("joined-props", web::get().to(load_orders_joined_props_3_queries))
+            .route("simple", web::get().to(load_orders_simple))
+            .route("simple-manual-mapping", web::get().to(load_orders_simple_manual_mapping))
+            .route("joined-props-non-optimized", web::get().to(load_orders_joined_props_3_queries))
             .route("joined_props_wrong_format", web::get().to(load_orders_joined_props_wrong_format))
-            .route("joined-props-optimize", web::get().to(retrieve_orders_optimized)),
+            .route("joined-props-optimized", web::get().to(retrieve_orders_optimized)),
     );
 }
 
@@ -34,8 +36,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 //     ),
 // )]
 
-async fn load_orders(app_state: web::types::State<AppState>) -> HttpResponse {
-    // If roles are not in the cache, fetch them from the database
+async fn load_orders_simple(app_state: web::types::State<AppState>) -> HttpResponse {
+    // Fetch Orders from the database with query_as! mapping feature
+    // NOTE: `sqlx::query_as!()` requires running "$ cargo sqlx prepare --database-url <db-url>" to compile
     let orders_result: Result<Vec<Order>, sqlx::Error> =
         sqlx::query_as!(Order, "SELECT order_id, customer_id, CAST(order_date AS CHAR) AS order_date FROM orders")
             .fetch_all(&app_state.pool)
@@ -61,6 +64,53 @@ async fn load_orders(app_state: web::types::State<AppState>) -> HttpResponse {
     response
 }
 
+async fn load_orders_simple_manual_mapping(app_state: web::types::State<AppState>) -> HttpResponse {
+    // Fetch orders from the database
+    // NOTE: `sqlx::query()` DOES NOT requires running "$ cargo sqlx prepare --database-url <db-url>" to compile
+    let query_result = sqlx::query(
+        r#"
+        SELECT order_id, customer_id, CAST(order_date AS CHAR) AS order_date_char FROM orders
+        "#
+    )
+    .fetch_all(&app_state.pool)
+    .await;
+
+    // Handle the result of the database query
+    let response = match query_result {
+        Ok(rows) => {
+            // Map the rows to Vec<Order>
+            let orders_list: Vec<Order> = rows
+                .into_iter()
+                .map(|row| {
+                    let order_id = row.get("order_id"); // must import "sqlx::Row"
+                    let customer_id = row.get("customer_id"); // must import "sqlx::Row"
+                    let order_date_char = row.get("order_date_char"); // must import "sqlx::Row"
+                    
+                    // Parse order_date_char into a DateTime type as needed
+                    // For example, if it's a string in a specific format, you can use a parser like chrono
+                    // let order_date = parse_order_date(&order_date_char);
+
+                    Order {
+                        order_id,
+                        customer_id,
+                        order_date: order_date_char, // Replace this with parsed order_date
+                    }
+                })
+                .collect();
+
+            HttpResponse::Ok().json(&orders_list)
+        }
+        Err(sqlx::Error::RowNotFound) => HttpResponse::NotFound().body("Orders not found"),
+        Err(e) => {
+            eprintln!("Error fetching orders: {:?}", e);
+            HttpResponse::InternalServerError().body("Internal Server Error")
+        }
+    };
+
+    response
+}
+
+
 // worked, but unwanted json format
 async fn load_orders_joined_props_wrong_format(app_state: web::types::State<AppState>) -> HttpResponse {
     // Define a new struct to represent the joined data from the query
@@ -70,8 +120,8 @@ async fn load_orders_joined_props_wrong_format(app_state: web::types::State<AppS
         order_date: String,
         customer_id: i64,
         customer__customer_id: Option<i64>,
-        customer__name: Option<String>,
-        customer__email: Option<String>,
+        customer_name: Option<String>,
+        customer_email: Option<String>,
         order_items__order_item_id: Option<i64>,
         order_items__product_id: Option<i64>,
         order_items__quantity: Option<i64>,
@@ -81,6 +131,7 @@ async fn load_orders_joined_props_wrong_format(app_state: web::types::State<AppS
     }
 
     // Fetch orders with joined properties from the database
+    //*
     let orders_query = sqlx::query_as!(
         JoinedOrder, // Specify the type of the result (should be a struct that implements Serialize)
         r#"
@@ -90,8 +141,8 @@ async fn load_orders_joined_props_wrong_format(app_state: web::types::State<AppS
             CAST(orders.order_date AS CHAR) AS "order_date!", -- Convert DATETIME to CHAR
             orders.customer_id AS "customer_id!",
             customers.customer_id AS "customer__customer_id!",
-            customers.name AS "customer__name!",
-            customers.email AS "customer__email!",
+            customers.name AS "customer_name!",
+            customers.email AS "customer_email!",
             order_items.order_item_id AS "order_items__order_item_id!",
             order_items.product_id AS "order_items__product_id!",
             order_items.quantity AS "order_items__quantity!",
@@ -104,21 +155,67 @@ async fn load_orders_joined_props_wrong_format(app_state: web::types::State<AppS
         LEFT JOIN products ON order_items.product_id = products.product_id
         "#
     );
+    //*/
 
+    // the sqlx::query() return type `Result<Vec<MySqlRow>, Error>`
+    /*
+    let orders_result = sqlx::query(
+        r#"
+        SELECT
+            o.order_id,
+            CAST(o.order_date AS CHAR) AS "order_date", 
+            o.customer_id,
+            c.name AS customer_name,
+            c.email AS customer_email,
+            oi.order_item_id,
+            oi.product_id,
+            oi.quantity,
+            p.name AS product_name,
+            p.price AS product_price
+        FROM
+            orders o
+            LEFT JOIN customers c ON o.customer_id = c.customer_id
+            LEFT JOIN order_items oi ON o.order_id = oi.order_id
+            LEFT JOIN products p ON oi.product_id = p.product_id
+        ORDER BY
+            o.order_id, oi.order_item_id
+        "#,
+    )
+    .fetch_all(&app_state.pool)
+    .await;
+    */
+
+    
     // Execute the query and fetch results
-    let orders_result = orders_query.fetch_all(&app_state.pool).await;
+    let orders_result: Result<Vec<JoinedOrder>, sqlx::Error> = orders_query.fetch_all(&app_state.pool).await;
+
+    // let orders_list: Vec<JoinedOrder> = orders_result.unwrap();
+    // println!("order_list: {:?}", serde_json::to_string_pretty(&orders_list).unwrap());
+    
 
     // Handle the result of the database query
     match orders_result {
-        Ok(orders_list) => HttpResponse::Ok().json(&orders_list),
+        Ok(orders_list) => {
+        // Ok(rows) => Vec<Some(OrderViewModel)> {
+            // let mut buf: Vec<u8> = Vec::new();
+            // let formatter: serde_json::ser::PrettyFormatter = serde_json::ser::PrettyFormatter::with_indent(b"  ");
+            // let mut ser: serde_json::Serializer<&mut Vec<u8>, serde_json::ser::PrettyFormatter> = serde_json::Serializer::with_formatter(&mut buf, formatter);
+            // orders_list.serialize(&mut ser).unwrap();   // the method `serialize` exists for struct `Vec<MySqlRow>`
+            // let buf_clone: Vec<u8> = buf.clone();
+            // println!("{}", String::from_utf8(buf).unwrap());
+            // HttpResponse::Ok().body(buf_clone)
+
+            // if use `sqlx::query()` => the trait bound `MySqlRow: Serialize` is not satisfied
+            HttpResponse::Ok().json(&orders_list)
+        },
         Err(sqlx::Error::RowNotFound) => HttpResponse::NotFound().body("Orders not found"),
         Err(e) => {
             eprintln!("Error fetching orders: {:?}", e);
             HttpResponse::InternalServerError().body("Internal Server Error")
         }
     }
+    
 }
-
 
 // attempt to fix from above working code:
 async fn load_orders_joined_props_3_queries(app_state: web::types::State<AppState>) -> HttpResponse {
@@ -230,7 +327,7 @@ async fn load_orders_joined_props_3_queries(app_state: web::types::State<AppStat
                                         price: order_item_row.product__price,
                                     };
 
-                                    let order_item = OrderItem {
+                                    let order_item: OrderItem = OrderItem {
                                         order_item_id: order_item_row.order_item_id,
                                         product,
                                         quantity: order_item_row.quantity,
@@ -344,7 +441,7 @@ async fn retrieve_orders_optimized(app_state: web::types::State<AppState>) -> Ht
                         name: data.customer_name,
                         email: data.customer_email,
                     };
-                    let mut order_items: Vec<OrderItemViewModel> = Vec::new();
+                    let order_items: Vec<OrderItemViewModel> = Vec::new();
                     let total: f64 = 0.0; // Initialize total for the order
                     let order = OrderViewModel {
                         order_id: data.order_id,
