@@ -87,7 +87,7 @@ pub mod models {
         pub order_items: Vec<OrderItemViewModel>,
         pub total: f64,
     }
-    #[derive(Debug, Serialize, Deserialize)]
+    #[derive(Debug, Serialize, Deserialize, Clone)]
     pub struct OrderItemViewModel {
         pub order_item_id: i64,
         pub product_id: i64,
@@ -117,7 +117,7 @@ pub mod models {
         pub product: Product,
     }
 
-    #[derive(Debug, Serialize, Deserialize, sqlx::FromRow, sqlx::Type, sqlx::Decode)]
+    #[derive(Debug, Serialize, Deserialize, sqlx::FromRow, sqlx::Type, sqlx::Decode, Clone)]
     pub struct Product {
         pub product_id: i64,
         pub name: String,

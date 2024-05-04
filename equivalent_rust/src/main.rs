@@ -14,7 +14,7 @@ const PORT: &str = "4000";
 struct AppState {
     pool: MySqlPool,
 
-    // // Add an LRU cache
+    // Add an LRU cache
     // role_cache: std::sync::Arc<std::sync::Mutex<LruCache<String, Vec<AspNetRole>>>>,
     // user_cache: std::sync::Arc<std::sync::Mutex<LruCache<String, Vec<AspNetUser>>>>,
     // user_with_roles_cache: std::sync::Arc<std::sync::Mutex<LruCache<String, Vec<AspNetUserWithRoles>>>>,

@@ -9,8 +9,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         web::scope("/orders")
             .route("simple", web::get().to(load_orders_simple))
             .route("simple-manual-mapping", web::get().to(load_orders_simple_manual_mapping))
+            .route("simple-manual-mapping-1", web::get().to(load_orders_manual_1))
             .route("joined-props-non-optimized", web::get().to(load_orders_joined_props_3_queries))
-            .route("joined_props_wrong_format", web::get().to(load_orders_joined_props_wrong_format))
+            .route("joined_props_not_grouped", web::get().to(load_orders_joined_props_not_grouped))
+            .route("joined_props_hashmap", web::get().to(load_orders_joined_props_hashmap))
             .route("joined-props-optimized", web::get().to(retrieve_orders_optimized)),
     );
 }
@@ -112,10 +114,13 @@ async fn load_orders_simple_manual_mapping(app_state: web::types::State<AppState
 
 
 // worked, but unwanted json format
-async fn load_orders_joined_props_wrong_format(app_state: web::types::State<AppState>) -> HttpResponse {
-    // Define a new struct to represent the joined data from the query
+async fn load_orders_joined_props_not_grouped(app_state: web::types::State<AppState>) -> HttpResponse {
+    // the sqlx::query() return type `Result<Vec<MySqlRow>, Error>`
+    // since `sqlx::mysql::MySqlRow` does not implment Serialize, so we create a wrapper struct for it:
+    // Define a wrapper struct that implements Serialize for MySqlRow
     #[derive(Debug, Serialize)]
-    struct JoinedOrder {
+    struct SerializableMySqlRow {
+        // Define fields to hold data from MySqlRow
         order_id: i64,
         order_date: String,
         customer_id: i64,
@@ -128,37 +133,302 @@ async fn load_orders_joined_props_wrong_format(app_state: web::types::State<AppS
         order_items__product__product_id: Option<i64>,
         order_items__product__name: Option<String>,
         order_items__product__price: Option<f64>,
+        // Add other fields as needed
     }
 
-    // Fetch orders with joined properties from the database
-    //*
-    let orders_query = sqlx::query_as!(
-        JoinedOrder, // Specify the type of the result (should be a struct that implements Serialize)
+    impl From<sqlx::mysql::MySqlRow> for SerializableMySqlRow {
+        fn from(row: sqlx::mysql::MySqlRow) -> Self {
+            // Extract data from MySqlRow and initialize SerializableMySqlRow fields
+            let order_id: i64 = row.get("order_id");
+            let order_date: String = row.get("order_date");
+            let customer_id = row.get("customer_id");
+            let customer__customer_id = row.get("customer__customer_id");
+            let customer_name = row.get("customer_name");
+            let customer_email = row.get("customer_email");
+            let order_items__order_item_id = row.get("order_items__order_item_id");
+            let order_items__product_id = row.get("order_items__product_id");
+            let order_items__quantity = row.get("order_items__quantity");
+            let order_items__product__product_id = row.get("order_items__product__product_id");
+            let order_items__product__name = row.get("order_items__product__name");
+            let order_items__product__price = row.get("order_items__product__price");
+
+            // Extract other fields as needed
+
+            SerializableMySqlRow {
+                order_id,
+                order_date,
+                customer_id,
+                customer__customer_id,
+                customer_name,
+                customer_email,
+                order_items__order_item_id,
+                order_items__product_id,
+                order_items__quantity,
+                order_items__product__product_id,
+                order_items__product__name,
+                order_items__product__price,
+                // Initialize other fields as needed
+            }
+        }
+    }
+
+    let orders_query = sqlx::query(
         r#"
         SELECT
-            orders.order_id AS "order_id!",
-            -- orders.order_date AS "order_date!",
-            CAST(orders.order_date AS CHAR) AS "order_date!", -- Convert DATETIME to CHAR
-            orders.customer_id AS "customer_id!",
-            customers.customer_id AS "customer__customer_id!",
-            customers.name AS "customer_name!",
-            customers.email AS "customer_email!",
-            order_items.order_item_id AS "order_items__order_item_id!",
-            order_items.product_id AS "order_items__product_id!",
-            order_items.quantity AS "order_items__quantity!",
-            products.product_id AS "order_items__product__product_id!",
-            products.name AS "order_items__product__name!",
-            products.price AS "order_items__product__price!"
+            orders.order_id AS "order_id",
+            -- orders.order_date AS "order_date",
+            CAST(orders.order_date AS CHAR) AS "order_date", -- Convert DATETIME to CHAR
+            orders.customer_id AS "customer_id",
+            customers.customer_id AS "customer__customer_id",
+            customers.name AS "customer_name",
+            customers.email AS "customer_email",
+            order_items.order_item_id AS "order_items__order_item_id",
+            order_items.product_id AS "order_items__product_id",
+            order_items.quantity AS "order_items__quantity",
+            products.product_id AS "order_items__product__product_id",
+            products.name AS "order_items__product__name",
+            products.price AS "order_items__product__price"
         FROM orders
         LEFT JOIN customers ON orders.customer_id = customers.customer_id
         LEFT JOIN order_items ON orders.order_id = order_items.order_id
         LEFT JOIN products ON order_items.product_id = products.product_id
         "#
     );
-    //*/
+    
+    // Execute the query and fetch results
+    let orders_result = orders_query.fetch_all(&app_state.pool).await;
 
+    // Handle the result of the database query
+    match orders_result {
+        Ok(orders_list) => {
+            let mut buf: Vec<u8> = Vec::new();
+            let formatter: serde_json::ser::PrettyFormatter = serde_json::ser::PrettyFormatter::with_indent(b"  ");
+            let mut ser: serde_json::Serializer<&mut Vec<u8>, serde_json::ser::PrettyFormatter> = serde_json::Serializer::with_formatter(&mut buf, formatter);
+            let serialized_rows: Vec<SerializableMySqlRow> = orders_list.into_iter().map(|row| row.into()).collect();
+            serialized_rows.serialize(&mut ser).unwrap();   // the method `serialize` exists for struct `Vec<MySqlRow>`
+            // let buf_clone: Vec<u8> = buf.clone();
+            println!("{}", String::from_utf8(buf).unwrap());
+            // HttpResponse::Ok().body(buf_clone)
+
+            // if use `sqlx::query()` => the trait bound `MySqlRow: Serialize` is not satisfied
+            // let serialized_rows: Vec<SerializableMySqlRow> = orders_list.into_iter().map(|row| row.into()).collect();
+            
+            HttpResponse::Ok().json(&serialized_rows)
+        },
+        Err(sqlx::Error::RowNotFound) => HttpResponse::NotFound().body("Orders not found"),
+        Err(e) => {
+            eprintln!("Error fetching orders: {:?}", e);
+            HttpResponse::InternalServerError().body("Internal Server Error")
+        }
+    }
+    
+}
+
+async fn load_orders_joined_props_hashmap(app_state: web::types::State<AppState>) -> HttpResponse {
     // the sqlx::query() return type `Result<Vec<MySqlRow>, Error>`
-    /*
+    // since `sqlx::mysql::MySqlRow` does not implment Serialize, so we create a wrapper struct for it:
+    // Define a wrapper struct that implements Serialize for MySqlRow
+    #[derive(Debug, Serialize)]
+    struct SerializableMySqlRow {
+        // Define fields to hold data from MySqlRow
+        order_id: i64,
+        order_date: String,
+        customer_id: i64,
+        customer__customer_id: Option<i64>,
+        customer_name: Option<String>,
+        customer_email: Option<String>,
+        order_items__order_item_id: Option<i64>,
+        order_items__product_id: Option<i64>,
+        order_items__quantity: Option<i64>,
+        order_items__product__product_id: Option<i64>,
+        order_items__product__name: Option<String>,
+        order_items__product__price: Option<f64>,
+        // Add other fields as needed
+    }
+
+    impl From<sqlx::mysql::MySqlRow> for SerializableMySqlRow {
+        fn from(row: sqlx::mysql::MySqlRow) -> Self {
+            // Extract data from MySqlRow and initialize SerializableMySqlRow fields
+            let order_id: i64 = row.get("order_id");
+            let order_date: String = row.get("order_date");
+            let customer_id = row.get("customer_id");
+            let customer__customer_id = row.get("customer__customer_id");
+            let customer_name = row.get("customer_name");
+            let customer_email = row.get("customer_email");
+            let order_items__order_item_id = row.get("order_items__order_item_id");
+            let order_items__product_id = row.get("order_items__product_id");
+            let order_items__quantity = row.get("order_items__quantity");
+            let order_items__product__product_id = row.get("order_items__product__product_id");
+            let order_items__product__name = row.get("order_items__product__name");
+            let order_items__product__price = row.get("order_items__product__price");
+
+            // Extract other fields as needed
+
+            SerializableMySqlRow {
+                order_id,
+                order_date,
+                customer_id,
+                customer__customer_id,
+                customer_name,
+                customer_email,
+                order_items__order_item_id,
+                order_items__product_id,
+                order_items__quantity,
+                order_items__product__product_id,
+                order_items__product__name,
+                order_items__product__price,
+                // Initialize other fields as needed
+            }
+        }
+    }
+
+    let orders_query = sqlx::query(
+        r#"
+        SELECT
+            orders.order_id AS "order_id",
+            -- orders.order_date AS "order_date",
+            CAST(orders.order_date AS CHAR) AS "order_date", -- Convert DATETIME to CHAR
+            orders.customer_id AS "customer_id",
+            customers.customer_id AS "customer__customer_id",
+            customers.name AS "customer_name",
+            customers.email AS "customer_email",
+            order_items.order_item_id AS "order_items__order_item_id",
+            order_items.product_id AS "order_items__product_id",
+            order_items.quantity AS "order_items__quantity",
+            products.product_id AS "order_items__product__product_id",
+            products.name AS "order_items__product__name",
+            products.price AS "order_items__product__price"
+        FROM orders
+        LEFT JOIN customers ON orders.customer_id = customers.customer_id
+        LEFT JOIN order_items ON orders.order_id = order_items.order_id
+        LEFT JOIN products ON order_items.product_id = products.product_id
+        "#
+    );
+    
+    // Execute the query and fetch results
+    let orders_result = orders_query.fetch_all(&app_state.pool).await;
+
+    // Handle the result of the database query
+    match orders_result {
+        Ok(orders_list) => {
+
+            // Create a HashMap to group order items by order ID
+            let mut orders_map = std::collections::HashMap::new();
+
+            // Iterate over fetched rows and populate the HashMap
+            for row in orders_list {
+                // Convert the row into a SerializableMySqlRow
+                let order_row: SerializableMySqlRow = row.into();
+
+                // Get the order ID
+                let order_id = order_row.order_id;
+
+                // Check if the order ID already exists in the HashMap
+                let order = orders_map.entry(order_id).or_insert_with(|| {
+                    // If the order ID doesn't exist, create a new OrderViewModel
+                    OrderViewModel {
+                        order_id,
+                        order_date: order_row.order_date,
+                        customer_id: order_row.customer_id,
+                        customer: Customer {
+                            customer_id: order_row.customer__customer_id.unwrap_or_default(),
+                            name: order_row.customer_name.clone().unwrap_or_default(),
+                            email: order_row.customer_email.clone().unwrap_or_default(),
+                        },
+                        order_items: Vec::new(), // Initialize an empty Vec for order items
+                        total: 0.0, // Initialize total for the order
+                    }
+                });
+
+                // Create an OrderItemViewModel for the current row
+                let order_item = OrderItemViewModel {
+                    order_item_id: order_row.order_items__order_item_id.unwrap_or_default(),
+                    product_id: order_row.order_items__product_id.unwrap_or_default(),
+                    quantity: order_row.order_items__quantity.unwrap_or_default(),
+                    product: Product {
+                        product_id: order_row.order_items__product__product_id.unwrap_or_default(),
+                        name: order_row.order_items__product__name.clone().unwrap_or_default(),
+                        price: order_row.order_items__product__price.unwrap_or_default(),
+                    },
+                };
+
+                // Push the order item into the order's order_items Vec
+                order.order_items.push(order_item.clone());
+            }
+
+            // Calculate the total for each order after all order items are added
+            for order in orders_map.values_mut() {
+                for order_item in &order.order_items {
+                    order.total += order_item.quantity as f64 * order_item.product.price;
+                }
+            }
+
+            // Convert the HashMap values into a Vec<OrderViewModel>
+            let orders: Vec<OrderViewModel> = orders_map.into_values().collect();
+
+            let mut buf: Vec<u8> = Vec::new();
+            let formatter: serde_json::ser::PrettyFormatter = serde_json::ser::PrettyFormatter::with_indent(b"  ");
+            let mut ser: serde_json::Serializer<&mut Vec<u8>, serde_json::ser::PrettyFormatter> = serde_json::Serializer::with_formatter(&mut buf, formatter);
+            orders.serialize(&mut ser).unwrap();   // the method `serialize` exists for struct `Vec<MySqlRow>`
+            // let buf_clone: Vec<u8> = buf.clone();
+            println!("{}", String::from_utf8(buf).unwrap());
+            
+            HttpResponse::Ok().json(&orders)
+        },
+        Err(sqlx::Error::RowNotFound) => HttpResponse::NotFound().body("Orders not found"),
+        Err(e) => {
+            eprintln!("Error fetching orders: {:?}", e);
+            HttpResponse::InternalServerError().body("Internal Server Error")
+        }
+    }
+    
+}
+
+async fn load_orders_manual_1(app_state: web::types::State<AppState>) -> HttpResponse {
+    //*
+    // the sqlx::query() return type `Result<Vec<MySqlRow>, Error>`
+    // since `sqlx::mysql::MySqlRow` does not implment Serialize, so we create a wrapper struct for it:
+    // Define a wrapper struct that implements Serialize for MySqlRow
+    #[derive(Debug, Serialize)]
+    struct SerializableMySqlRow {
+        // Define fields to hold data from MySqlRow
+        order_id: i64,
+        order_date: String,
+        customer_id: i64,
+        // customer__customer_id: Option<i64>,
+        customer_name: Option<String>,
+        customer_email: Option<String>,
+        // order_items__order_item_id: Option<i64>,
+        // order_items__product_id: Option<i64>,
+        // order_items__quantity: Option<i64>,
+        // order_items__product__product_id: Option<i64>,
+        // order_items__product__name: Option<String>,
+        // order_items__product__price: Option<f64>,
+        // Add other fields as needed
+    }
+
+    impl From<sqlx::mysql::MySqlRow> for SerializableMySqlRow {
+        fn from(row: sqlx::mysql::MySqlRow) -> Self {
+            // Extract data from MySqlRow and initialize SerializableMySqlRow fields
+            let order_id: i64 = row.get("order_id");
+            let order_date: String = row.get("order_date");
+            let customer_id: i64 = row.get("customer_id");
+            let customer_name: Option<String> = row.get("customer_name");
+            let customer_email: Option<String> = row.get("customer_email");
+
+            // Extract other fields as needed
+
+            SerializableMySqlRow {
+                order_id,
+                order_date,
+                customer_id,
+                customer_name,
+                customer_email
+                // Initialize other fields as needed
+            }
+        }
+    }
+
     let orders_result = sqlx::query(
         r#"
         SELECT
@@ -183,30 +453,15 @@ async fn load_orders_joined_props_wrong_format(app_state: web::types::State<AppS
     )
     .fetch_all(&app_state.pool)
     .await;
-    */
 
-    
-    // Execute the query and fetch results
-    let orders_result: Result<Vec<JoinedOrder>, sqlx::Error> = orders_query.fetch_all(&app_state.pool).await;
-
-    // let orders_list: Vec<JoinedOrder> = orders_result.unwrap();
-    // println!("order_list: {:?}", serde_json::to_string_pretty(&orders_list).unwrap());
-    
 
     // Handle the result of the database query
     match orders_result {
-        Ok(orders_list) => {
-        // Ok(rows) => Vec<Some(OrderViewModel)> {
-            // let mut buf: Vec<u8> = Vec::new();
-            // let formatter: serde_json::ser::PrettyFormatter = serde_json::ser::PrettyFormatter::with_indent(b"  ");
-            // let mut ser: serde_json::Serializer<&mut Vec<u8>, serde_json::ser::PrettyFormatter> = serde_json::Serializer::with_formatter(&mut buf, formatter);
-            // orders_list.serialize(&mut ser).unwrap();   // the method `serialize` exists for struct `Vec<MySqlRow>`
-            // let buf_clone: Vec<u8> = buf.clone();
-            // println!("{}", String::from_utf8(buf).unwrap());
-            // HttpResponse::Ok().body(buf_clone)
-
-            // if use `sqlx::query()` => the trait bound `MySqlRow: Serialize` is not satisfied
-            HttpResponse::Ok().json(&orders_list)
+        
+        Ok(rows) => {
+            // Convert MySqlRow instances to SerializableMySqlRow
+            let serialized_rows: Vec<SerializableMySqlRow> = rows.into_iter().map(|row| row.into()).collect();
+            HttpResponse::Ok().json(&serialized_rows)
         },
         Err(sqlx::Error::RowNotFound) => HttpResponse::NotFound().body("Orders not found"),
         Err(e) => {
@@ -214,7 +469,6 @@ async fn load_orders_joined_props_wrong_format(app_state: web::types::State<AppS
             HttpResponse::InternalServerError().body("Internal Server Error")
         }
     }
-    
 }
 
 // attempt to fix from above working code:
@@ -266,7 +520,17 @@ async fn load_orders_joined_props_3_queries(app_state: web::types::State<AppStat
         "#
     );
 
+    let order_query_time = std::time::Instant::now();
     let orders_result = orders_query.fetch_all(&app_state.pool).await;
+    
+    // stop timer & print to terminal
+    let duration: std::time::Duration = order_query_time.elapsed();
+    let elapsed_ms: f64 = duration.as_secs_f64() * 1000.0;
+    let elapsed_seconds: f64 = elapsed_ms / 1000.0;
+    print!(
+        "\norder_query time: {:?} ({:?} ms) ({:.8} s)\n",
+        duration, elapsed_ms, elapsed_seconds
+    );
 
     match orders_result {
         Ok(orders_list) => {
@@ -288,7 +552,18 @@ async fn load_orders_joined_props_3_queries(app_state: web::types::State<AppStat
                     customer_id
                 );
 
+
+                let customer_query_time = std::time::Instant::now();
                 let customer_result = customer_query.fetch_one(&app_state.pool).await;
+
+                // stop timer & print to terminal
+                let duration: std::time::Duration = customer_query_time.elapsed();
+                let elapsed_ms: f64 = duration.as_secs_f64() * 1000.0;
+                let elapsed_seconds: f64 = elapsed_ms / 1000.0;
+                println!(
+                    "customer_query time: {:?} ({:?} ms) ({:.8} s)",
+                    duration, elapsed_ms, elapsed_seconds
+                );
 
                 match customer_result {
                     Ok(customer_row) => {
@@ -313,8 +588,18 @@ async fn load_orders_joined_props_3_queries(app_state: web::types::State<AppStat
                             "#,
                             order_id
                         );
-
+                        
+                        let order_item_query_time = std::time::Instant::now();
                         let order_items_result = order_items_query.fetch_all(&app_state.pool).await;
+                        
+                        // stop timer & print to terminal
+                        let duration: std::time::Duration = order_item_query_time.elapsed();
+                        let elapsed_ms: f64 = duration.as_secs_f64() * 1000.0;
+                        let elapsed_seconds: f64 = elapsed_ms / 1000.0;
+                        println!(
+                            "order_item_query time: {:?} ({:?} ms) ({:.8} s)",
+                            duration, elapsed_ms, elapsed_seconds
+                        );
 
                         match order_items_result {
                             Ok(order_items_list) => {

@@ -1,0 +1,80 @@
+{
+  "db_name": "MySQL",
+  "query": "\n                            SELECT \n                                order_items.order_item_id AS \"order_item_id!\",\n                                order_items.product_id AS \"product_id!\",\n                                order_items.quantity AS \"quantity!\",\n                                products.product_id AS \"product__product_id!\",\n                                products.name AS \"product__name!\",\n                                products.price AS \"product__price!\"\n                            FROM order_items\n                            LEFT JOIN products ON order_items.product_id = products.product_id\n                            WHERE order_items.order_id = ?\n                            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "order_item_id!",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | AUTO_INCREMENT",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "product_id!",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | MULTIPLE_KEY | NO_DEFAULT_VALUE",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "quantity!",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | NO_DEFAULT_VALUE",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "product__product_id!",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "PRIMARY_KEY | AUTO_INCREMENT",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "product__name!",
+        "type_info": {
+          "type": "Blob",
+          "flags": "BLOB | NO_DEFAULT_VALUE",
+          "char_set": 224,
+          "max_size": 4294967295
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "product__price!",
+        "type_info": {
+          "type": "Double",
+          "flags": "NO_DEFAULT_VALUE",
+          "char_set": 63,
+          "max_size": 22
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "a8dc0ce1e51c30467eb10166d54a341b88ad7e912ea04640870a5854c49cc8bd"
+}
