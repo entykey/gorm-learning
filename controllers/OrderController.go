@@ -296,6 +296,7 @@ func (oc *OrderController) MissingProductMappingRetrieveOrdersIncludeAllPropsGor
 }
 
 func (oc *OrderController) WorkedRetrieveOrdersIncludeAllPropsGorm(c fiber.Ctx) error {
+	log.Println("WorkedRetrieveOrdersIncludeAllPropsGorm hit!")
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("panic: %v", r)
@@ -383,7 +384,7 @@ func (oc *OrderController) WorkedRetrieveOrdersIncludeAllPropsGorm(c fiber.Ctx) 
 }
 
 // mapped correctly but wong thing is: each all order only has exactly 1 orderItem => wrong calculation
-func (oc *OrderController) WrongRetrieveOrdersIncludeAllPropsGorm(c fiber.Ctx) error {
+func (oc *OrderController) NotGroupedRetrieveOrdersIncludeAllPropsGorm(c fiber.Ctx) error {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("panic: %v", r)
@@ -471,7 +472,7 @@ func (oc *OrderController) WrongRetrieveOrdersIncludeAllPropsGorm(c fiber.Ctx) e
 }
 
 // Handler to Get orders (joined props) using raw SQL
-func (oc *OrderController) GetOrdersWithRawSQL(c fiber.Ctx) error {
+func (oc *OrderController) NotGroupedGetOrdersWithRawSQL(c fiber.Ctx) error {
 
 	defer func() {
 		if r := recover(); r != nil {

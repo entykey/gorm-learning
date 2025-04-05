@@ -1,0 +1,2 @@
+-- This will run when the MySQL container starts
+-- Add any initial database setup here if needed

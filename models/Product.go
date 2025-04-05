@@ -10,7 +10,7 @@ package models
 // }
 
 type Product struct {
-	ProductId int     `json:"product_id"`
+	ProductId int     `gorm:"primary_key"`
 	Name      string  `json:"name" gorm:"column:name"`   // Ensure correct column name
 	Price     float64 `json:"price" gorm:"column:price"` // Ensure correct column name
 }
