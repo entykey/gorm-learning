@@ -53,6 +53,9 @@ NOTE: And our database name is "gorm-learning"
 **Quite heavy size for our services**
 ![docker_images_size](imgs/docker_images_size.png)
 
+**They're even heavier size on Windows 11 Docker Desktop**
+![docker_image_size_windows11](imgs/docker_image_size_windows11.png)
+
 
 **Output, with a simple query**:
 ```sh
@@ -90,6 +93,111 @@ credentials:
 **phpmyadmin Preview**
 ![phpmyadmin_gorm_learning_preview](imgs/phpmyadmin_gorm_learning_preview.png)
 
+### Replace phpadmin/phpadmin since it's too heavy with adminer image, in docker-compose.yml:
+```docker-compose.yml
+phpmyadmin:
+    # image: phpmyadmin/phpmyadmin  # (~570MB on macOS - ~814MB on Windows image)
+    image: adminer  # Image size is 171.3MB on Windows
+    restart: always
+    ports:
+      # - "8080:80" # "HOST_PORT:CONTAINER_PORT" (since phpmyadmin/phpmyadmin listens for internal port of 80)
+      - "8080:8080"  # "HOST_PORT:CONTAINER_PORT" (since adminer listens for internal port of 8080)
+    environment:
+      - PMA_HOST=db
+      - PMA_PORT=3306
+      - MYSQL_ROOT_PASSWORD=rootpassword
+    depends_on:
+      - db
+    networks:
+      - app-network
+```
+Image size is 171.3MB on Windows
+**php adminer Preview**
+![php_adminer_preview](imgs/php_adminer_preview.png)
+
+
+### Replace `mysql:8.0` with `mariadb:10.6` image to reduce image size
+**docker-compose.yml**:
+```docker-compose.yml
+  db:
+    # image: mysql:8.0  # (~764MB on macOS - ~1GB on Windows image)
+    # image: mysql:8.0-oraclelinux9 # Also 1.04GB on Windows, same as the debian based "mysql:8.0" image
+    # image: mysql/mysql-server:8.0 # failed, no permission
+    image: mariadb:10.6 # 539MB on Windows
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+      MYSQL_DATABASE: gorm_learning
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -uroot -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+    networks:
+      - app-network
+```
+**mariadb Image size**
+![mariadb_image_size](imgs/mariadb_image_size.png)
+
+### mysql MariaDB container error (exited)
+LOGS:
+```
+2025-04-06 18:15:47 2025-04-06 11:15:47+00:00 [Note] [Entrypoint]: Entrypoint script for MariaDB Server 1:10.6.21+maria~ubu2004 started.
+2025-04-06 18:15:48 2025-04-06 11:15:48+00:00 [Note] [Entrypoint]: Switching to dedicated user 'mysql'
+2025-04-06 18:15:48 2025-04-06 11:15:48+00:00 [Note] [Entrypoint]: Entrypoint script for MariaDB Server 1:10.6.21+maria~ubu2004 started.
+2025-04-06 18:15:49 2025-04-06 11:15:49+00:00 [Note] [Entrypoint]: MariaDB upgrade information missing, assuming required
+2025-04-06 18:15:49 2025-04-06 11:15:49+00:00 [Note] [Entrypoint]: MariaDB upgrade (mariadb-upgrade or creating healthcheck users) required, but skipped due to $MARIADB_AUTO_UPGRADE setting
+2025-04-06 18:15:49 2025-04-06 11:15:49 0 [Note] Starting MariaDB 10.6.21-MariaDB-ubu2004 source revision 066e8d6aeabc13242193780341e0f845528105de server_uid TSHkpl2IUYejLmMGEJlKxG3S+oE= as process 1
+2025-04-06 18:15:49 2025-04-06 11:15:49 0 [Note] InnoDB: Compressed tables use zlib 1.2.11
+2025-04-06 18:15:49 2025-04-06 11:15:49 0 [Note] InnoDB: Number of pools: 1
+2025-04-06 18:15:49 2025-04-06 11:15:49 0 [Note] InnoDB: Using crc32 + pclmulqdq instructions
+2025-04-06 18:15:49 2025-04-06 11:15:49 0 [Note] mariadbd: O_TMPFILE is not supported on /tmp (disabling future attempts)
+2025-04-06 18:15:49 2025-04-06 11:15:49 0 [Note] InnoDB: Using Linux native AIO
+2025-04-06 18:15:49 2025-04-06 11:15:49 0 [Note] InnoDB: Initializing buffer pool, total size = 134217728, chunk size = 134217728
+2025-04-06 18:15:49 2025-04-06 11:15:49 0 [Note] InnoDB: Completed initialization of buffer pool
+2025-04-06 18:15:49 2025-04-06 11:15:49 0 [ERROR] InnoDB: MySQL-8.0 tablespace in ./ibdata1
+2025-04-06 18:15:49 2025-04-06 11:15:49 0 [ERROR] InnoDB: Restart in MySQL for migration/recovery.
+2025-04-06 18:15:49 2025-04-06 11:15:49 0 [ERROR] InnoDB: Plugin initialization aborted with error Unsupported
+2025-04-06 18:15:49 2025-04-06 11:15:49 0 [Note] InnoDB: Starting shutdown...
+2025-04-06 18:15:49 2025-04-06 11:15:49 0 [ERROR] Plugin 'InnoDB' registration as a STORAGE ENGINE failed.
+2025-04-06 18:15:49 2025-04-06 11:15:49 0 [Note] Plugin 'FEEDBACK' is disabled.
+2025-04-06 18:15:49 2025-04-06 11:15:49 0 [ERROR] Could not open mysql.plugin table: "Table 'mysql.plugin' doesn't exist". Some plugins may be not loaded
+2025-04-06 18:15:49 2025-04-06 11:15:49 0 [Warning] 'default-authentication-plugin' is MySQL 5.6 / 5.7 compatible option. To be implemented in later versions.
+2025-04-06 18:15:49 2025-04-06 11:15:49 0 [ERROR] Unknown/unsupported storage engine: InnoDB
+2025-04-06 18:15:49 2025-04-06 11:15:49 0 [ERROR] Aborting
+```
+
+Ahhh yeah, this one is a classic MySQL/MariaDB data dir mismatch! Let's walk through it so it clicks:
+
+#### 🔥 What Just Happened?
+You switched from MySQL → MariaDB but kept the same volume (mysql-data), and now MariaDB says:
+
+```bash
+MySQL-8.0 tablespace in ./ibdata1 → Unsupported
+```
+
+**Which means**:
+MariaDB is seeing MySQL 8.0's data format.
+It doesn't know how to deal with it and panics.
+So it fails to initialize InnoDB and exits.
+
+**💡 How to Fix It**
+✅ Option 1: Nuke the Volume (for fresh DB)
+```bash
+docker volume rm gorm-learning_mysql-data
+```
+Then 
+```sh
+docker compose up
+```
+again.
+
+This gives MariaDB a fresh data directory, no MySQL junk in there. This worked fine on Tuanhayho Windows 11 machine.
 
 ### testing the go webapi app:
 **visit `http://localhost:3000/Customer`**:
