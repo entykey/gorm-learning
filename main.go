@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"gorm-learning/database"
 	. "gorm-learning/database"
 	. "gorm-learning/models"
 	"gorm-learning/routes"
@@ -88,11 +89,14 @@ func initORM_DB() {
 	db.AutoMigrate(&Customer{}, &Order{}, &Product{}, &OrderItem{})
 	infoLogger.Println("Migrations applied successfully!")
 
-	// In your initORM_DB function, replace the seeding part with:
-	infoLogger.Println("Starting database seeding...")
-	if err := SeedData(db); err != nil {
-		errorLogger.Fatalf("Database seeding failed: %v", err)
+	// Initialize seeder
+	seeder := database.NewSeeder(db)
+
+	// Seed data
+	if err := seeder.SeedAll(); err != nil {
+		errorLogger.Fatalf("Seeding failed: %v", err)
 	}
+	infoLogger.Println("✅ Database seeding completed")
 }
 
 // func initORM_DB() {
