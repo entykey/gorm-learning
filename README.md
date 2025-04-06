@@ -51,8 +51,7 @@ Enter password: "rootpassword"
 NOTE: And our database name is "gorm-learning"
 
 **Quite heavy size for our services**
-docker_images_size.png
-![docker_images_size](docker_images_size.png)
+![docker_images_size](imgs/docker_images_size.png)
 
 
 **Output, with a simple query**:
@@ -89,7 +88,7 @@ credentials:
 - password: rootpassword
 
 **phpmyadmin Preview**
-![phpmyadmin_gorm_learning_preview](phpmyadmin_gorm_learning_preview.png)
+![phpmyadmin_gorm_learning_preview](imgs/phpmyadmin_gorm_learning_preview.png)
 
 
 ### testing the go webapi app:
