@@ -522,3 +522,86 @@ Response:
   }
 ]
 ```
+
+
+## Achtung Docker eating mac's drive a lot !!!
+```sh
+TuanhayhoMacBookPro:~ user$ docker system df
+TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+Images          13        5         5.259GB   2.6GB (49%)
+Containers      5         0         146.3MB   146.3MB (100%)
+Local Volumes   4         2         293.9MB   245.5MB (83%)
+Build Cache     408       0         19.01GB   19.01GB
+TuanhayhoMacBookPro:~ user$ 
+```
+**=> nearly 20GB is eaten up for Build Cache**
+
+Let's free up that space and reclaim some of the `19GB`!
+
+1. Clean Up Build Cache:
+Docker keeps a `build cache` to speed up future builds. However, it can grow unchecked over time. You can clean up this cache using:
+
+```bash
+docker builder prune --all --force
+```
+This command will remove all unused build cache, including intermediate images, to free up space. The `--force` flag bypasses the confirmation prompt.
+
+Result (logs)
+```sh
+TuanhayhoMacBookPro:gorm-learning user$ docker builder prune --all --force
+ID                                              RECLAIMABLE     SIZE            LAST ACCESSED
+mw534m2j5s5750fc79rwia7fk                       true            66B             8 hours ago
+xe5kpkzct43cv4fwcczrrnqs3*                      true    115.5MB         7 hours ago
+p41ptteyvj45vv59k6nyosmfc*                      true    0B              2 weeks ago
+s0gs24k1veymbbheyyxostq8r*                      true    16.5kB          3 days ago
+cxaubhe5g1jg6oiiizgkafbik                       true    27.43kB         4 weeks ago
+wwpxch61eh37cbwuik8v0o2dn                       true    66B             7 hours ago
+z0joohfs48gd3e92mo3eg0k1y*                      true    115.5MB         About an hour ago
+o4ocjw7avuolgzy3kmyk684v1                       true    66B             6 hours ago
+xzexirrlx45qy5jg99yprye47                       true    4.197MB         2 weeks ago
+hxkhbxdeont5n18op0wbn6nc3                       true    0B              About an hour ago
+t2tpqqp7vayhyzby61ohm0svy*                      true    388.1MB         2 weeks ago
+ii5m88296a4alyysez4tdg3ah                       true    5.526kB         4 weeks ago
+euwgg1tfpw00imvyh9i4llqdv*                      true    10.62kB         4 weeks ago
+ldymlpnlcaoeeijhjg36s5pls                       true    13.97MB         4 seconds ago
+ofvmro61hz3gikraj1dyad1kj*                      true    115.4MB         7 hours ago
+yqyj9ggsavxxpim6ozpr23kzq                       true    25.18kB         About an hour ago
+w6tp1btjtkyoio8cx0lkwuf8f*                      true    4.807kB         4 weeks ago
+ehl2yhtr1nl10iq9ilbrl5mga                       true    14.17MB         5 weeks ago
+rkq1uusvympuj1cu2cadkdxf8*                      true    115.5MB         7 hours ago
+rnh2a3ilbdnngjioacy4dipvk*                      true    0B              4 weeks ago
+wkuhliia3j1mmg3rwhwd4ix6x                       true    1.524kB         4 weeks ago
+1nvtecyvy7lxm889rgdw1fyjf                       true    66B             8 hours ago
+. . . (thounsands of lines) . . . 
+unxribsu1rnj6dek829wn5hgi                       true    20.75kB         10 seconds ago
+2yq9umiqbnk3zk8svtyc1pqrz                       true    32.41MB         2 weeks ago
+78qxkhtpo3jszs5k8sxti4fp7                       true    5.526kB         14 seconds ago
+rqm1b0w5ityuy8lm7x4o16fs2                       true    304.2MB         22 seconds ago
+p3yfs94ljxlnkgwb5kmq4sz6p*                      true    1.355kB         About an hour ago
+jbdj18ytv3ydcb04j0img53ek*                      true    0B              4 weeks ago
+4ep3n6qbys90nbjz6u8lwsgyckv                       true    304.2MB         4 seconds ago
+
+Total:  19.02GB
+```
+
+2. Remove Stopped Containers:
+The output shows you have 5 containers, with 146MB of space used. If you have any stopped containers, they are taking up space unnecessarily. You can remove them using:
+
+```bash
+docker container prune --force
+```
+This will remove all stopped containers.
+
+3. Remove Unused Volumes:
+Docker volumes can also accumulate and consume space. You have 4 volumes, with 293.9MB used. To remove unused volumes, use:
+
+```bash
+docker volume prune --force
+```
+This will clean up any unused volumes, freeing up space.
+
+4. Regular Cleanup: Consider adding periodic cleanup for unused containers, volumes, and images:
+
+```bash
+docker system prune --all --volumes --force
+```
